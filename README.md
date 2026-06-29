@@ -70,6 +70,23 @@ python scripts/build.py
 python scripts/build.py --tu /path/to/TU_*
 ```
 
+### Android APK scaffold
+
+This fork can build a signed debug APK scaffold:
+
+```bash
+JAVA_HOME=/opt/android-studio/jbr ANDROID_HOME=$HOME/AndroidSDK \
+  python scripts/build_android_apk.py
+```
+
+Output:
+
+```text
+out/android/nocturnerecomp-debug.apk
+```
+
+See [`docs/android.md`](docs/android.md) for the current native-game blocker: a playable APK still needs an Android-capable ReXGlue SDK/runtime.
+
 ### Title update (`--tu`)
 
 The retail title update relocates the whole executable, so it needs its own
