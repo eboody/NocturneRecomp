@@ -21,8 +21,17 @@ set(NOCTURNERECOMP_SOURCES
     ${GENERATED_SOURCES}
 )
 
+if(ANDROID)
+    list(APPEND NOCTURNERECOMP_SOURCES src/android_entry.cpp)
+endif()
+
 if(WIN32)
     add_executable(nocturnerecomp WIN32 ${NOCTURNERECOMP_SOURCES})
+elseif(ANDROID)
+    add_library(nocturnerecomp SHARED ${NOCTURNERECOMP_SOURCES})
+    set_target_properties(nocturnerecomp PROPERTIES
+        OUTPUT_NAME "nocturnerecomp"
+    )
 else()
     add_executable(nocturnerecomp ${NOCTURNERECOMP_SOURCES})
     set_target_properties(nocturnerecomp PROPERTIES

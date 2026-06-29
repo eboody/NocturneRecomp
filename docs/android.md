@@ -1,35 +1,86 @@
 # Android APK status
 
-This fork contains an Android APK packaging scaffold:
+This branch contains the start of a real Android port, not just a Java shell.
+
+## What works now
+
+- ReXGlue can be patched and built for Android arm64-v8a with the NDK.
+- The Android APK packager can include native `.so` files under
+  `lib/arm64-v8a/`.
+- The Java launcher owns a fullscreen `SurfaceView` and passes its native
+  surface to JNI.
+- The native Android entry point creates a ReXGlue
+  `AndroidWindowedAppContext`, creates the generated Nocturne app, and runs the
+  ReXGlue app loop.
+
+## Required local game asset
+
+A playable APK cannot be generated from source alone because ReXGlue codegen
+requires the game binary:
+
+```text
+assets/default.xex
+```
+
+This file is intentionally not tracked or redistributed. Put your legally
+obtained Xbox 360 game XEX at that path, then run:
 
 ```bash
 JAVA_HOME=/opt/android-studio/jbr ANDROID_HOME=$HOME/AndroidSDK \
-  python scripts/build_android_apk.py
+  python scripts/build_android_game_apk.py
 ```
 
-The script uses Android SDK command-line tools directly (`aapt2`, `d8`, `zipalign`, `apksigner`) and writes:
+The script will:
+
+1. Build an experimental Android ReXGlue SDK from source using
+   `android/rexglue-android.patch`.
+2. Run host/Linux `sdk/bin/rexglue codegen nocturnerecomp_manifest.toml`.
+3. Cross-compile `libnocturnerecomp.so` for Android arm64-v8a.
+4. Package `libnocturnerecomp.so` and `librexruntime.so` into a signed debug APK.
+
+Expected APK path:
 
 ```text
 out/android/nocturnerecomp-debug.apk
 ```
 
-## Current native-game blocker
+## Current verification
 
-The APK scaffold builds, signs, and verifies, but it is not yet a playable native Android port of NocturneRecomp.
+Verified locally without the XEX:
 
-NocturneRecomp depends on ReXGlue. The public ReXGlue SDK releases currently publish only:
+```text
+python -m py_compile scripts/build_rexglue_android_sdk.py scripts/build_android_game_apk.py scripts/build_android_apk.py
+python scripts/build_android_game_apk.py --skip-rexglue-sdk
+# -> error: missing assets/default.xex; provide your game XEX before building a playable APK
+```
 
-- `linux-amd64`
-- `linux-arm64`
-- `win-amd64`
+Also verified native APK packaging with the Android ReXGlue runtime:
 
-There is no Android/bionic SDK artifact to link into an APK.
+```text
+lib/arm64-v8a/librexruntime.so
+```
 
-I also probed ReXGlue source directly with an Android NDK toolchain. After a minimal platform-detection patch, CMake configure succeeds for `android-arm64`, but the native build fails in ReXGlue core on Android-specific gaps:
+## ReXGlue Android patch notes
 
-- `src/core/fiber_posix.cpp` uses `getcontext`, `makecontext`, and `swapcontext`, which Android/bionic does not provide.
-- `include/rex/chrono/chrono.h` leaves `clock_time_conversion` unspecialized for the Android platform macro path.
-- `src/core/memory_posix.cpp` calls `rex::GetAndroidApiLevel()`, but `rex/main_android.h` is not present in the public SDK source checkout.
-- `src/core/threading_posix.cpp` also includes missing `rex/main_android.h`.
+`android/rexglue-android.patch` currently adds/changes:
 
-So the next real step for a playable APK is an Android ReXGlue port/fork that supplies Android fibers/context switching, platform chrono definitions, and the missing Android main/API-level support. Once that exists, the APK packaging scaffold can be changed to include the native NocturneRecomp shared library.
+- Android platform detection in ReXGlue CMake.
+- Android pthread-backed fiber fallback, replacing unavailable bionic
+  `ucontext` APIs.
+- Android CMake helper behavior that skips GTK/XCB and desktop `main()`.
+- Android surface/window/windowed-app-context stubs using `ANativeWindow`.
+- Android link dependency cleanup (`android`, `log`, no GTK/XCB/rt).
+- FFmpeg Android arm64 non-PIC assembly disabled for first successful shared
+  runtime linkage.
+- Minimal Android content-URI stub; full JNI ContentResolver support remains a
+  future improvement.
+
+## Caveats
+
+This is an experimental first port path. Once `assets/default.xex` is provided,
+the next validation steps are:
+
+1. Build the full playable APK.
+2. Install on a Vulkan-capable Android device.
+3. Capture `adb logcat` for ReXGlue/Nocturne startup errors.
+4. Iterate on input/audio/surface lifecycle issues.

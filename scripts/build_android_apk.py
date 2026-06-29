@@ -90,6 +90,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="out/android/nocturnerecomp-debug.apk")
     parser.add_argument("--target-sdk", default="android-35")
+    parser.add_argument("--native-lib-dir", help="Directory containing arm64-v8a .so files to package")
     args = parser.parse_args()
 
     android_home = find_android_home()
@@ -147,6 +148,19 @@ def main() -> None:
 
     # Add classes.dex to the unsigned APK.
     run(["zip", "-j", unsigned, dex_dir / "classes.dex"], cwd=ROOT)
+
+    native_lib_dir = Path(args.native_lib_dir).resolve() if args.native_lib_dir else None
+    if native_lib_dir:
+        so_files = sorted(native_lib_dir.glob("*.so"))
+        if not so_files:
+            raise SystemExit(f"error: no .so files found in {native_lib_dir}")
+        apk_lib_dir = out_dir / "apk-lib" / "lib" / "arm64-v8a"
+        apk_lib_dir.mkdir(parents=True, exist_ok=True)
+        for so in so_files:
+            shutil.copy2(so, apk_lib_dir / so.name)
+        rels = [str(p.relative_to(out_dir / "apk-lib")) for p in sorted(apk_lib_dir.glob("*.so"))]
+        run(["zip", "-r", unsigned, *rels], cwd=out_dir / "apk-lib")
+
     run([zipalign, "-f", "4", unsigned, aligned])
 
     keystore = ROOT / "out" / "android-debug.keystore"
