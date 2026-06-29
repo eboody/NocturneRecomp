@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 83902e7..00e1c12 100644
+index 83902e7..1ecc2e3 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -111,7 +111,14 @@ add_compile_options(
+@@ -111,7 +111,15 @@ add_compile_options(
  )
  
  # Platform detection (supports AMD64 and ARM64)
@@ -14,11 +14,12 @@ index 83902e7..00e1c12 100644
 +        set(REX_PLATFORM "android-${CMAKE_SYSTEM_PROCESSOR}")
 +    endif()
 +    add_compile_definitions(REX_PLATFORM_ANDROID=1)
++    enable_language(ASM)
 +elseif(WIN32)
      if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
          set(REX_PLATFORM "win-amd64")
      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64")
-@@ -130,7 +137,7 @@ elseif(UNIX AND NOT APPLE)
+@@ -130,7 +138,7 @@ elseif(UNIX AND NOT APPLE)
      endif()
      add_compile_definitions(REX_PLATFORM_LINUX=1)
  else()
@@ -76,10 +77,10 @@ index 8761cff..bb7cdda 100644
  struct clock_time_conversion<::rex::chrono::WinSystemClock, ::rex::chrono::XSystemClock> {
    using WClock_ = ::rex::chrono::WinSystemClock;
 diff --git a/include/rex/thread/fiber.h b/include/rex/thread/fiber.h
-index 64e70a7..df872ca 100644
+index 64e70a7..115d9d5 100644
 --- a/include/rex/thread/fiber.h
 +++ b/include/rex/thread/fiber.h
-@@ -14,10 +14,14 @@
+@@ -14,10 +14,13 @@
  #include <rex/platform.h>
  #include <cstddef>
  
@@ -89,40 +90,57 @@ index 64e70a7..df872ca 100644
  #include <cstdint>
  #include <vector>
 +#elif REX_PLATFORM_ANDROID
-+#include <condition_variable>
-+#include <mutex>
-+#include <pthread.h>
++#include <cstdint>
++#include <vector>
  #endif
  
  namespace rex::thread {
-@@ -51,7 +55,21 @@ struct Fiber {
+@@ -51,7 +54,39 @@ struct Fiber {
  #if REX_PLATFORM_WIN32
    void* handle_ = nullptr;
    bool is_thread_fiber_ = false;
 -#elif REX_PLATFORM_LINUX
 +#elif REX_PLATFORM_ANDROID
-+  pthread_t thread_{};
-+  std::mutex mutex_;
-+  std::condition_variable cv_;
++  struct Context {
++    uint64_t x19 = 0;
++    uint64_t x20 = 0;
++    uint64_t x21 = 0;
++    uint64_t x22 = 0;
++    uint64_t x23 = 0;
++    uint64_t x24 = 0;
++    uint64_t x25 = 0;
++    uint64_t x26 = 0;
++    uint64_t x27 = 0;
++    uint64_t x28 = 0;
++    uint64_t x29 = 0;
++    uint64_t x30 = 0;
++    uint64_t sp = 0;
++    uint64_t d8 = 0;
++    uint64_t d9 = 0;
++    uint64_t d10 = 0;
++    uint64_t d11 = 0;
++    uint64_t d12 = 0;
++    uint64_t d13 = 0;
++    uint64_t d14 = 0;
++    uint64_t d15 = 0;
++  };
++
++  Context context_{};
++  std::vector<uint8_t> stack_;
 +  void (*entry_)(void*) = nullptr;
 +  void* arg_ = nullptr;
 +  bool is_thread_fiber_ = false;
-+  bool started_ = false;
-+  bool runnable_ = false;
-+  bool finished_ = false;
-+  bool destroy_requested_ = false;
 +
-+  static void* ThreadMain(void* raw);
-+  void WaitUntilRunnable();
++  static void Trampoline();
 +#elif REX_PLATFORM_GNU_LINUX || REX_PLATFORM_MAC
    ucontext_t context_{};
    std::vector<uint8_t> stack_;
    void (*entry_)(void*) = nullptr;
 diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
-index 5ddabd1..37bacf4 100644
+index 5ddabd1..18c9d0b 100644
 --- a/src/core/CMakeLists.txt
 +++ b/src/core/CMakeLists.txt
-@@ -44,6 +44,24 @@ if(WIN32)
+@@ -44,6 +44,25 @@ if(WIN32)
          system_win.cpp
          threading_win.cpp
      )
@@ -135,6 +153,7 @@ index 5ddabd1..37bacf4 100644
 +        exception_handler_posix.cpp
 +        filesystem_posix.cpp
 +        fiber_android.cpp
++        fiber_android_arm64.S
 +        mapped_memory_posix.cpp
 +        math_gcc.cpp
 +        memory_posix.cpp
@@ -147,7 +166,7 @@ index 5ddabd1..37bacf4 100644
  elseif(UNIX)
      target_sources(rexcore PRIVATE
          atomic_posix.cpp
-@@ -75,7 +93,9 @@ target_include_directories(rexcore PRIVATE
+@@ -75,7 +94,9 @@ target_include_directories(rexcore PRIVATE
      ${PROJECT_SOURCE_DIR}/thirdparty/cli11/include
  )
  
@@ -456,19 +475,17 @@ index 0000000..462623a
 +}  // namespace rex::ui
 diff --git a/src/core/fiber_android.cpp b/src/core/fiber_android.cpp
 new file mode 100644
-index 0000000..68784d3
+index 0000000..78bf500
 --- /dev/null
 +++ b/src/core/fiber_android.cpp
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,86 @@
 +/**
 + * @file        rex/core/fiber_android.cpp
-+ * @brief       Android backend for rex::thread::Fiber.
++ * @brief       Android arm64 backend for rex::thread::Fiber.
 + *
-+ * Android/bionic does not provide ucontext. This backend preserves C++ stacks by
-+ * running each created fiber on a parked pthread and cooperatively handing
-+ * execution between fibers with condition variables. It is heavier than
-+ * swapcontext, but it provides the stack-preserving behavior required by XDK
-+ * fibers without relying on unavailable libc APIs.
++ * Android/bionic does not provide ucontext. This backend uses a tiny AArch64
++ * callee-saved register context switch so fibers stay on the same host thread,
++ * preserving thread-local assumptions in XThread and guest fiber APIs.
 + */
 +
 +#include <rex/platform.h>
@@ -476,88 +493,61 @@ index 0000000..68784d3
 +
 +#include <rex/thread/fiber.h>
 +
-+#include <algorithm>
 +#include <cassert>
-+#include <pthread.h>
++#include <cstdint>
++#include <exception>
 +
 +namespace rex::thread {
 +
++extern "C" void rex_fiber_swap(void* from_context, const void* to_context);
++
 +thread_local Fiber* Fiber::tls_current_ = nullptr;
-+
-+void Fiber::WaitUntilRunnable() {
-+  std::unique_lock<std::mutex> lock(mutex_);
-+  cv_.wait(lock, [this] { return runnable_ || destroy_requested_; });
-+  runnable_ = false;
-+}
-+
-+void* Fiber::ThreadMain(void* raw) {
-+  auto* fiber = static_cast<Fiber*>(raw);
-+  tls_current_ = fiber;
-+  {
-+    std::lock_guard<std::mutex> lock(fiber->mutex_);
-+    fiber->started_ = true;
-+    fiber->cv_.notify_all();
-+  }
-+
-+  fiber->WaitUntilRunnable();
-+  if (!fiber->destroy_requested_) {
-+    fiber->entry_(fiber->arg_);
-+  }
-+
-+  {
-+    std::lock_guard<std::mutex> lock(fiber->mutex_);
-+    fiber->finished_ = true;
-+    fiber->cv_.notify_all();
-+  }
-+  return nullptr;
-+}
 +
 +Fiber* Fiber::ConvertCurrentThread() {
 +  auto* f = new Fiber();
-+  f->thread_ = pthread_self();
 +  f->is_thread_fiber_ = true;
-+  f->started_ = true;
 +  tls_current_ = f;
 +  return f;
 +}
 +
 +Fiber* Fiber::Create(size_t stack_size, void (*entry)(void*), void* arg) {
++#if !defined(__aarch64__)
++#error "Android Fiber backend currently supports arm64-v8a/aarch64 only"
++#endif
++
 +  auto* f = new Fiber();
 +  f->entry_ = entry;
 +  f->arg_ = arg;
++  f->stack_.resize(stack_size);
 +
-+  pthread_attr_t attr;
-+  if (pthread_attr_init(&attr) != 0) {
-+    delete f;
-+    return nullptr;
-+  }
-+  const size_t min_stack = static_cast<size_t>(PTHREAD_STACK_MIN);
-+  pthread_attr_setstacksize(&attr, std::max(stack_size, min_stack));
-+  const int rc = pthread_create(&f->thread_, &attr, Fiber::ThreadMain, f);
-+  pthread_attr_destroy(&attr);
-+  if (rc != 0) {
-+    delete f;
-+    return nullptr;
-+  }
++  uintptr_t sp = reinterpret_cast<uintptr_t>(f->stack_.data() + f->stack_.size());
++  sp &= ~uintptr_t(0xF);  // AArch64 requires 16-byte SP alignment.
 +
-+  std::unique_lock<std::mutex> lock(f->mutex_);
-+  f->cv_.wait(lock, [f] { return f->started_; });
++  f->context_.sp = sp;
++  f->context_.x30 = reinterpret_cast<uintptr_t>(&Fiber::Trampoline);
 +  return f;
 +}
 +
++void Fiber::Trampoline() {
++  Fiber* f = tls_current_;
++  assert(f);
++  f->entry_(f->arg_);
++
++  // The existing POSIX backend has uc_link = nullptr; returning is terminal.
++  std::terminate();
++}
++
 +void Fiber::SwitchTo(Fiber* target) {
++  assert(target);
 +  Fiber* from = tls_current_;
-+  assert(from && target);
-+  {
-+    std::lock_guard<std::mutex> lock(target->mutex_);
-+    target->runnable_ = true;
-+    target->cv_.notify_all();
++  assert(from && "ConvertCurrentThread must be called before SwitchTo");
++
++  if (from == target) {
++    return;
 +  }
++
 +  tls_current_ = target;
-+  if (!from->finished_) {
-+    from->WaitUntilRunnable();
-+  }
-+  tls_current_ = from;
++  rex_fiber_swap(&from->context_, &target->context_);
 +}
 +
 +void Fiber::Destroy() {
@@ -565,24 +555,94 @@ index 0000000..68784d3
 +    if (tls_current_ == this) {
 +      tls_current_ = nullptr;
 +    }
-+    delete this;
-+    return;
++  } else {
++    assert(this != tls_current_ && "Destroy called on the currently running fiber");
 +  }
 +
-+  assert(this != tls_current_ && "Destroy called on the currently running fiber");
-+  {
-+    std::lock_guard<std::mutex> lock(mutex_);
-+    destroy_requested_ = true;
-+    runnable_ = true;
-+    cv_.notify_all();
-+  }
-+  pthread_join(thread_, nullptr);
 +  delete this;
 +}
 +
 +}  // namespace rex::thread
 +
 +#endif  // REX_PLATFORM_ANDROID
+diff --git a/src/core/fiber_android_arm64.S b/src/core/fiber_android_arm64.S
+new file mode 100644
+index 0000000..0fd045e
+--- /dev/null
++++ b/src/core/fiber_android_arm64.S
+@@ -0,0 +1,72 @@
++#if defined(__ANDROID__) && defined(__aarch64__)
++
++.text
++.align 2
++.global rex_fiber_swap
++.type rex_fiber_swap, %function
++
++// void rex_fiber_swap(void* from, const void* to)
++//
++// Context layout, all uint64_t:
++//   0   x19
++//   8   x20
++//   16  x21
++//   24  x22
++//   32  x23
++//   40  x24
++//   48  x25
++//   56  x26
++//   64  x27
++//   72  x28
++//   80  x29
++//   88  x30/lr
++//   96  sp
++//   104 d8
++//   112 d9
++//   120 d10
++//   128 d11
++//   136 d12
++//   144 d13
++//   152 d14
++//   160 d15
++
++rex_fiber_swap:
++  // Save callee-saved GPRs.
++  stp x19, x20, [x0, #0]
++  stp x21, x22, [x0, #16]
++  stp x23, x24, [x0, #32]
++  stp x25, x26, [x0, #48]
++  stp x27, x28, [x0, #64]
++  stp x29, x30, [x0, #80]
++
++  mov x9, sp
++  str x9, [x0, #96]
++
++  // Save callee-saved FP/SIMD low 64 bits.
++  stp d8,  d9,  [x0, #104]
++  stp d10, d11, [x0, #120]
++  stp d12, d13, [x0, #136]
++  stp d14, d15, [x0, #152]
++
++  // Restore target FP/SIMD.
++  ldp d8,  d9,  [x1, #104]
++  ldp d10, d11, [x1, #120]
++  ldp d12, d13, [x1, #136]
++  ldp d14, d15, [x1, #152]
++
++  // Restore target SP and GPRs.
++  ldr x9, [x1, #96]
++  mov sp, x9
++
++  ldp x19, x20, [x1, #0]
++  ldp x21, x22, [x1, #16]
++  ldp x23, x24, [x1, #32]
++  ldp x25, x26, [x1, #48]
++  ldp x27, x28, [x1, #64]
++  ldp x29, x30, [x1, #80]
++
++  ret
++
++.size rex_fiber_swap, .-rex_fiber_swap
++
++#endif
 diff --git a/src/filesystem/android_content.cpp b/src/filesystem/android_content.cpp
 new file mode 100644
 index 0000000..74ccffd

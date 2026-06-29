@@ -7,8 +7,9 @@ This branch contains the start of a real Android port, not just a Java shell.
 - ReXGlue can be patched and built for Android arm64-v8a with the NDK.
 - The Android APK packager can include native `.so` files under
   `lib/arm64-v8a/`.
-- The Java launcher owns a fullscreen `SurfaceView` and passes its native
-  surface to JNI.
+- The Java launcher owns a fullscreen `SurfaceView`, explicitly loads
+  `librexruntime.so` before `libnocturnerecomp.so` when native libraries are
+  packaged, and passes its native surface to JNI.
 - The native Android entry point creates a ReXGlue
   `AndroidWindowedAppContext`, creates the generated Nocturne app, and runs the
   ReXGlue app loop.
@@ -65,8 +66,8 @@ lib/arm64-v8a/librexruntime.so
 `android/rexglue-android.patch` currently adds/changes:
 
 - Android platform detection in ReXGlue CMake.
-- Android pthread-backed fiber fallback, replacing unavailable bionic
-  `ucontext` APIs.
+- Android same-thread arm64 fiber backend, replacing unavailable bionic
+  `ucontext` APIs while preserving Xbox/ReXGlue thread-local assumptions.
 - Android CMake helper behavior that skips GTK/XCB and desktop `main()`.
 - Android surface/window/windowed-app-context stubs using `ANativeWindow`.
 - Android link dependency cleanup (`android`, `log`, no GTK/XCB/rt).

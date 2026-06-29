@@ -14,8 +14,16 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surfaceView;
     private TextView statusView;
 
+    private static boolean nativeAvailable = false;
+
     static {
-        System.loadLibrary("nocturnerecomp");
+        try {
+            System.loadLibrary("rexruntime");
+            System.loadLibrary("nocturnerecomp");
+            nativeAvailable = true;
+        } catch (UnsatisfiedLinkError err) {
+            nativeAvailable = false;
+        }
     }
 
     private static native void nativeStart(Surface surface);
@@ -46,7 +54,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
         statusView = new TextView(this);
         statusView.setTextColor(Color.WHITE);
-        statusView.setText("NocturneRecomp starting…");
+        statusView.setText(nativeAvailable
+            ? "NocturneRecomp starting…"
+            : "NocturneRecomp Android scaffold — native game libraries not packaged");
         statusView.setBackgroundColor(0x66000000);
         statusView.setPadding(24, 24, 24, 24);
         root.addView(statusView);
@@ -56,23 +66,32 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
+        if (!nativeAvailable) {
+            return;
+        }
         statusView.setText("NocturneRecomp native surface ready");
         nativeStart(holder.getSurface());
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        nativeSetSurface(holder.getSurface());
+        if (nativeAvailable) {
+            nativeSetSurface(holder.getSurface());
+        }
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        nativeSetSurface(null);
+        if (nativeAvailable) {
+            nativeSetSurface(null);
+        }
     }
 
     @Override
     protected void onDestroy() {
-        nativeStop();
+        if (nativeAvailable) {
+            nativeStop();
+        }
         super.onDestroy();
     }
 }
