@@ -6,11 +6,13 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 #include <rex/cvar.h>
 #include <rex/logging.h>
@@ -24,8 +26,26 @@ std::unique_ptr<rex::ui::WindowedApp> g_app;
 std::thread g_thread;
 std::atomic<bool> g_started{false};
 ANativeWindow* g_window = nullptr;
+std::string g_data_dir;
+
+void PrepareWritableWorkingDirectory() {
+  std::string dir;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    dir = g_data_dir;
+  }
+  if (dir.empty()) {
+    dir = "/data/local/tmp/nocturnerecomp";
+  }
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  setenv("REX_ANDROID_DATA_DIR", dir.c_str(), 1);
+  chdir(dir.c_str());
+}
 
 void RunNocturne() {
+  PrepareWritableWorkingDirectory();
+
   const char* argv[] = {"nocturnerecomp"};
   auto remaining = rex::cvar::Init(1, const_cast<char**>(argv));
   (void)remaining;
@@ -70,6 +90,18 @@ void RunNocturne() {
   g_started.store(false, std::memory_order_release);
 }
 }  // namespace
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nocturnerecomp_MainActivity_nativeSetDataDirectory(JNIEnv* env, jclass, jstring path) {
+  const char* chars = path ? env->GetStringUTFChars(path, nullptr) : nullptr;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_data_dir = chars ? chars : "";
+  }
+  if (chars) {
+    env->ReleaseStringUTFChars(path, chars);
+  }
+}
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_nocturnerecomp_MainActivity_nativeStart(JNIEnv* env, jclass, jobject surface) {

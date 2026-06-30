@@ -26,6 +26,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
+    private static native void nativeSetDataDirectory(String path);
     private static native void nativeStart(Surface surface);
     private static native void nativeSetSurface(Surface surface);
     private static native void nativeStop();
@@ -62,6 +63,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         root.addView(statusView);
 
         setContentView(root);
+
+        if (nativeAvailable) {
+            nativeSetDataDirectory(getFilesDir().getAbsolutePath());
+        }
     }
 
     @Override

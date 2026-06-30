@@ -143,6 +143,20 @@ def main() -> None:
     ])
 
     java_sources = sorted((ANDROID_DIR / "src").rglob("*.java")) + sorted((out_dir / "generated").rglob("*.java"))
+
+    # ReXGlue links SDL statically into librexruntime.so on Android. SDL's
+    # JNI_OnLoad still expects its Java-side org.libsdl.app classes to be
+    # present in the app ClassLoader, so include the SDL Android support sources
+    # whenever a local Android ReXGlue source tree exists.
+    sdl_java_roots = [
+        ROOT / "out" / "rexglue-android-src" / "thirdparty" / "sdl3" / "android-project" / "app" / "src" / "main" / "java",
+        Path("/tmp/rexglue-sdk-src/thirdparty/sdl3/android-project/app/src/main/java"),
+    ]
+    for root in sdl_java_roots:
+        if root.exists():
+            java_sources.extend(sorted(root.rglob("*.java")))
+            break
+
     run([javac, "--release", "17", "-classpath", android_jar, "-d", classes_dir, *java_sources])
     run([d8, "--min-api", "26", "--output", dex_dir, *classes_dir.rglob("*.class")])
 

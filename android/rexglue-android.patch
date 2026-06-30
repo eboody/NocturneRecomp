@@ -293,6 +293,35 @@ index b9aca05..7db7963 100644
  MenuItem::MenuItem(Type type, const std::string& text, const std::string& hotkey,
                     std::function<void()> callback)
      : type_(type),
+diff --git a/src/ui/rex_app.cpp b/src/ui/rex_app.cpp
+index 8abe75e..a3208f2 100644
+--- a/src/ui/rex_app.cpp
++++ b/src/ui/rex_app.cpp
+@@ -38,6 +38,8 @@
+ #include <rex/ui/keybinds.h>
+ #include <rex/version.h>
+ 
++#include <cstdlib>
++
+ #include <fmt/format.h>
+ #include <imgui.h>
+ 
+@@ -133,7 +135,15 @@ bool ReXApp::SetupEnvironment() {
+                                         log_level_str, category_levels);
+   if (log_file_cvar.empty()) {
+     log_config.app_name = std::string(GetName());
++#if REX_PLATFORM_ANDROID
++    if (const char* data_dir = std::getenv("REX_ANDROID_DATA_DIR")) {
++      log_config.log_dir = (std::filesystem::path(data_dir) / "logs").string();
++    } else {
++      log_config.log_dir = (user_data_root_ / "logs").string();
++    }
++#else
+     log_config.log_dir = (exe_dir / "logs").string();
++#endif
+   }
+ 
+   rex::InitLogging(log_config);
 diff --git a/thirdparty/CMakeLists.txt b/thirdparty/CMakeLists.txt
 index 79c9c10..2a46040 100644
 --- a/thirdparty/CMakeLists.txt
@@ -353,8 +382,8 @@ index 79c9c10..2a46040 100644
 diff --git a/include/rex/main_android.h b/include/rex/main_android.h
 new file mode 100644
 index 0000000..b09c50b
---- /dev/null
-+++ b/include/rex/main_android.h
+--- a/include/rex/main_android.h
++++ b/b/include/rex/main_android.h
 @@ -0,0 +1,15 @@
 +#pragma once
 +
@@ -374,8 +403,8 @@ index 0000000..b09c50b
 diff --git a/include/rex/ui/surface_android.h b/include/rex/ui/surface_android.h
 new file mode 100644
 index 0000000..ddddb8b
---- /dev/null
-+++ b/include/rex/ui/surface_android.h
+--- a/include/rex/ui/surface_android.h
++++ b/b/include/rex/ui/surface_android.h
 @@ -0,0 +1,30 @@
 +#pragma once
 +
@@ -410,8 +439,8 @@ index 0000000..ddddb8b
 diff --git a/include/rex/ui/window_android.h b/include/rex/ui/window_android.h
 new file mode 100644
 index 0000000..3f332a6
---- /dev/null
-+++ b/include/rex/ui/window_android.h
+--- a/include/rex/ui/window_android.h
++++ b/b/include/rex/ui/window_android.h
 @@ -0,0 +1,21 @@
 +#pragma once
 +
@@ -437,8 +466,8 @@ index 0000000..3f332a6
 diff --git a/include/rex/ui/windowed_app_context_android.h b/include/rex/ui/windowed_app_context_android.h
 new file mode 100644
 index 0000000..462623a
---- /dev/null
-+++ b/include/rex/ui/windowed_app_context_android.h
+--- a/include/rex/ui/windowed_app_context_android.h
++++ b/b/include/rex/ui/windowed_app_context_android.h
 @@ -0,0 +1,33 @@
 +#pragma once
 +
@@ -476,8 +505,8 @@ index 0000000..462623a
 diff --git a/src/core/fiber_android.cpp b/src/core/fiber_android.cpp
 new file mode 100644
 index 0000000..78bf500
---- /dev/null
-+++ b/src/core/fiber_android.cpp
+--- a/src/core/fiber_android.cpp
++++ b/b/src/core/fiber_android.cpp
 @@ -0,0 +1,86 @@
 +/**
 + * @file        rex/core/fiber_android.cpp
@@ -568,8 +597,8 @@ index 0000000..78bf500
 diff --git a/src/core/fiber_android_arm64.S b/src/core/fiber_android_arm64.S
 new file mode 100644
 index 0000000..0fd045e
---- /dev/null
-+++ b/src/core/fiber_android_arm64.S
+--- a/src/core/fiber_android_arm64.S
++++ b/b/src/core/fiber_android_arm64.S
 @@ -0,0 +1,72 @@
 +#if defined(__ANDROID__) && defined(__aarch64__)
 +
@@ -646,8 +675,8 @@ index 0000000..0fd045e
 diff --git a/src/filesystem/android_content.cpp b/src/filesystem/android_content.cpp
 new file mode 100644
 index 0000000..74ccffd
---- /dev/null
-+++ b/src/filesystem/android_content.cpp
+--- a/src/filesystem/android_content.cpp
++++ b/b/src/filesystem/android_content.cpp
 @@ -0,0 +1,19 @@
 +#include <rex/platform.h>
 +#if REX_PLATFORM_ANDROID
@@ -671,8 +700,8 @@ index 0000000..74ccffd
 diff --git a/src/ui/window_android.cpp b/src/ui/window_android.cpp
 new file mode 100644
 index 0000000..0d49843
---- /dev/null
-+++ b/src/ui/window_android.cpp
+--- a/src/ui/window_android.cpp
++++ b/b/src/ui/window_android.cpp
 @@ -0,0 +1,60 @@
 +#include <rex/platform.h>
 +#if REX_PLATFORM_ANDROID
@@ -737,8 +766,8 @@ index 0000000..0d49843
 diff --git a/src/ui/windowed_app_context_android.cpp b/src/ui/windowed_app_context_android.cpp
 new file mode 100644
 index 0000000..cb31f6c
---- /dev/null
-+++ b/src/ui/windowed_app_context_android.cpp
+--- a/src/ui/windowed_app_context_android.cpp
++++ b/b/src/ui/windowed_app_context_android.cpp
 @@ -0,0 +1,35 @@
 +#include <rex/platform.h>
 +#if REX_PLATFORM_ANDROID
@@ -775,8 +804,37 @@ index 0000000..cb31f6c
 +}  // namespace rex::ui
 +
 +#endif  // REX_PLATFORM_ANDROID
+diff --git a/thirdparty/FFmpeg/config.h b/thirdparty/FFmpeg/config.h
+--- a/thirdparty/FFmpeg/config.h
++++ b/thirdparty/FFmpeg/config.h
+@@ -10,18 +10,18 @@
+ #else
+ #include "config_macos_x86_64.h"
+ #endif
+-#elif defined(__gnu_linux__)
+-#if defined(__aarch64__)
+-#include "config_linux_aarch64.h"
+-#else
+-#include "config_linux_x86_64.h"
+-#endif
+ #elif defined(__ANDROID__)
+ #if defined(__aarch64__)
+ #include "config_android_aarch64.h"
+ #elif defined(__amd64__) || defined(__x86_64__)
+ #include "config_android_x86_64.h"
+ #else
+ #error "android arch unsupported"
+ #endif
++#elif defined(__gnu_linux__)
++#if defined(__aarch64__)
++#include "config_linux_aarch64.h"
++#else
++#include "config_linux_x86_64.h"
++#endif
+ #else
+ #error "no config"
+ #endif
 diff --git a/thirdparty/FFmpeg/config_android_aarch64.h b/thirdparty/FFmpeg/config_android_aarch64.h
-index 0f9c605..d266c6e 100644
 --- a/thirdparty/FFmpeg/config_android_aarch64.h
 +++ b/thirdparty/FFmpeg/config_android_aarch64.h
 @@ -15,7 +15,7 @@
