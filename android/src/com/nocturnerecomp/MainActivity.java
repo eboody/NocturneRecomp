@@ -60,7 +60,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             : "NocturneRecomp Android scaffold — native game libraries not packaged");
         statusView.setBackgroundColor(0x66000000);
         statusView.setPadding(24, 24, 24, 24);
-        root.addView(statusView);
+        if (!nativeAvailable) {
+            root.addView(statusView);
+        }
 
         setContentView(root);
 
