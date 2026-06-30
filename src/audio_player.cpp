@@ -1,5 +1,19 @@
 #include "audio_player.h"
 
+#ifdef __ANDROID__
+namespace nocturne {
+class AudioPlayerDialog {};
+AudioPlayer::AudioPlayer() = default;
+AudioPlayer::~AudioPlayer() = default;
+AudioPlayer& GetAudioPlayer() {
+  static AudioPlayer instance;
+  return instance;
+}
+void AudioPlayer::Bind(rex::ui::Window*, rex::ui::WindowedAppContext*) {}
+void AudioPlayer::AttachDialog(rex::ui::ImGuiDrawer*) {}
+}  // namespace nocturne
+#else
+
 #include <string>
 
 #include <imgui.h>
@@ -182,3 +196,5 @@ void AudioPlayer::AttachDialog(rex::ui::ImGuiDrawer* drawer) {
 }
 
 }  // namespace nocturne
+
+#endif  // __ANDROID__

@@ -60,6 +60,7 @@ class NocturnerecompApp : public rex::ReXApp {
     nocturne::Achievements().Bind(window(), &app_context(), input_sys);
     nocturne::GetAudioPlayer().Bind(window(), &app_context());
 
+#ifndef __ANDROID__
     auto* ks = rex::system::kernel_state();
     if (ks && ks->app_manager()) {
       auto* xmp = static_cast<rex::kernel::xam::apps::XmpApp*>(
@@ -68,6 +69,7 @@ class NocturnerecompApp : public rex::ReXApp {
         xmp->ScanFilesystem();
       }
     }
+#endif
 
     // Keep guest input "active" while our achievements overlay is open so the
     // B-watcher / left-stick reads see the real controller regardless of mouse

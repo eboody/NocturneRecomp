@@ -39,7 +39,11 @@ void RunNocturne() {
     if (g_window) {
       g_context->SetNativeWindow(g_window);
     }
-    g_app = rex::ui::GetWindowedAppCreator()(*g_context);
+    auto creator = rex::ui::WindowedApp::GetCreator("nocturnerecomp");
+    if (!creator) {
+      return;
+    }
+    g_app = creator(*g_context);
     g_app->SetParsedArguments({});
   }
 

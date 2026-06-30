@@ -8,13 +8,15 @@
 
 #ifdef _WIN32
 #include <Windows.h>
-#else
+#elif defined(__x86_64__) || defined(__i386__)
 #include <csignal>
 #include <ucontext.h>
 #endif
 #include <atomic>
 #include <cstdint>
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
 #include <xmmintrin.h>
+#endif
 
 // Counters written by the exception handler (from any thread), read by the UI.
 inline std::atomic<uint64_t> g_nocturnerecomp_fp_exception_count{0};
@@ -57,7 +59,7 @@ inline LONG WINAPI GuestFpExceptionHandler(EXCEPTION_POINTERS* ep) {
 inline void* InstallGuestFpExceptionHandlerWin() {
     return AddVectoredExceptionHandler(1, GuestFpExceptionHandler);
 }
-#else
+#elif defined(__x86_64__) || defined(__i386__)
 inline void GuestFpExceptionHandler(int /*sig*/, siginfo_t* si, void* ctx) {
     switch (si->si_code) {
         case FPE_FLTDIV:
@@ -97,6 +99,8 @@ inline void* InstallGuestFpExceptionHandlerPosix() {
     sigaction(SIGFPE, &sa, old_sa);
     return old_sa;
 }
+#else
+inline void* InstallGuestFpExceptionHandlerPosix() { return nullptr; }
 #endif
 
 // Remove the previously installed FP exception handler.
@@ -104,7 +108,7 @@ inline void RemoveGuestFpExceptionHandler(void* handle) {
     if (!handle) return;
 #ifdef _WIN32
     RemoveVectoredExceptionHandler(handle);
-#else
+#elif defined(__x86_64__) || defined(__i386__)
     auto* old_sa = static_cast<struct sigaction*>(handle);
     sigaction(SIGFPE, old_sa, nullptr);
     delete old_sa;
